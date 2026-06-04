@@ -7,6 +7,7 @@
   const fontSize = 14;
   const trailLength = 20;
   const fallSpeed = 0.28;
+  const minAlpha = 0.22;
 
   let columns = 0;
   let drops = [];
@@ -25,13 +26,13 @@
     canvas.height = window.innerHeight;
     columns = Math.floor(canvas.width / fontSize);
     drops = Array.from({ length: columns }, () =>
-      Math.random() * (canvas.height / fontSize)
+      -Math.random() * (canvas.height / fontSize)
     );
     trails = Array.from({ length: columns }, createTrail);
   }
 
   function draw() {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+    ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.font = fontSize + "px monospace";
@@ -56,7 +57,9 @@
         if (y < -fontSize || y > canvas.height) continue;
 
         const fade = 1 - t / trailLength;
-        const alpha = fade * fade * 0.95;
+        const alpha = fade * fade * fade;
+        if (alpha < minAlpha) continue;
+
         const gray = Math.floor(80 + fade * 175);
 
         ctx.shadowBlur = 0;
