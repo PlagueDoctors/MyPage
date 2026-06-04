@@ -8,9 +8,9 @@
     "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾ" +
     "タダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポ" +
     "マミムメモャヤュユョヨラリルレロワヲンヴヵヶー";
-  const chars = LATIN + KATAKANA;
+  const KATAKANA_RATIO = 0.35;
 
-  const fontSize = 11;
+  const fontSize = 10;
   const trailLength = 70;
   const fallSpeed = 0.30;
   const minAlpha = 0.12;
@@ -28,7 +28,8 @@
   let lastTime = 0;
 
   function randomChar() {
-    return chars[Math.floor(Math.random() * chars.length)];
+    const pool = Math.random() < KATAKANA_RATIO ? KATAKANA : LATIN;
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   function randomMutateDelay() {
