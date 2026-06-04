@@ -2,26 +2,59 @@
   const canvas = document.getElementById("code-rain");
   const ctx = canvas.getContext("2d");
 
-  const chars =
+  const LATIN =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>{}[]();=+-*/&|!~#@$%^&*";
+  const KATAKANA =
+    "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾ" +
+    "タダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポ" +
+    "マミムメモャヤュユョヨラリルレロワヲンヴヵヶー";
+  const chars = LATIN + KATAKANA;
+
   const fontSize = 11;
   const trailLength = 70;
   const fallSpeed = 0.30;
   const minAlpha = 0.12;
   const FPS_REF = 60;
+  const MUTATE_RATIO = 0.3;
+  const FONT_FAMILY =
+    '"BIZ UDPGothic", "Yu Gothic UI", "MS Gothic", "Consolas", monospace';
 
   let columns = 0;
   let rows = 0;
   let drops = [];
   let grid = [];
+  let mutable = [];
+  let mutateTimer = [];
   let lastTime = 0;
 
   function randomChar() {
     return chars[Math.floor(Math.random() * chars.length)];
   }
 
-  function createColumn() {
-    return Array.from({ length: rows }, randomChar);
+  function randomMutateDelay() {
+    return 0.25 + Math.random() * 1.75;
+  }
+
+  function initCellState(i, r, prevChar) {
+    grid[i][r] = prevChar || randomChar();
+    mutable[i][r] = Math.random() < MUTATE_RATIO;
+    mutateTimer[i][r] = mutable[i][r]
+      ? Math.random() * randomMutateDelay()
+      : Infinity;
+  }
+
+  function updateMutations(delta) {
+    for (let i = 0; i < columns; i++) {
+      for (let r = 0; r < rows; r++) {
+        if (!mutable[i][r]) continue;
+
+        mutateTimer[i][r] -= delta;
+        if (mutateTimer[i][r] <= 0) {
+          grid[i][r] = randomChar();
+          mutateTimer[i][r] = randomMutateDelay();
+        }
+      }
+    }
   }
 
   function resize() {
@@ -31,12 +64,18 @@
     rows = Math.ceil(canvas.height / fontSize) + 2;
 
     const prevGrid = grid;
-    grid = Array.from({ length: columns }, (_, i) => {
-      const prev = prevGrid[i];
-      return Array.from({ length: rows }, (_, r) =>
-        prev && prev[r] ? prev[r] : randomChar()
-      );
-    });
+    grid = [];
+    mutable = [];
+    mutateTimer = [];
+
+    for (let i = 0; i < columns; i++) {
+      grid[i] = [];
+      mutable[i] = [];
+      mutateTimer[i] = [];
+      for (let r = 0; r < rows; r++) {
+        initCellState(i, r, prevGrid[i] && prevGrid[i][r]);
+      }
+    }
 
     drops = Array.from({ length: columns }, () =>
       -Math.random() * trailLength
@@ -50,11 +89,16 @@
     lastTime = timestamp;
     const move = fallSpeed * FPS_REF * delta;
 
+    updateMutations(delta);
+
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = fontSize + "px monospace";
+    ctx.font = fontSize + "px " + FONT_FAMILY;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
 
     const bottomRow = rows - 1;
+    const cellCenterX = fontSize / 2;
 
     for (let i = 0; i < columns; i++) {
       drops[i] += move;
@@ -73,7 +117,7 @@
 
         const gray = Math.floor(80 + fade * 175);
         ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${alpha})`;
-        ctx.fillText(grid[i][r], i * fontSize, r * fontSize);
+        ctx.fillText(grid[i][r], i * fontSize + cellCenterX, r * fontSize);
       }
 
       if (head - trailLength > bottomRow) {
