@@ -76,3 +76,19 @@ body {
   opacity: 0.7;
   letter-spacing: 0.05em;
 }
+
+.content-link {
+  margin-top: 2rem;
+  font-size: 0.875rem;
+  letter-spacing: 0.12em;
+  color: rgba(180, 200, 255, 0.65);
+  text-decoration: none;
+  pointer-events: auto;
+  transition: color 0.3s ease, text-shadow 0.3s ease, letter-spacing 0.3s ease;
+}
+
+.content-link:hover {
+  color: rgba(220, 235, 255, 0.95);
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 14px rgba(140, 180, 255, 0.65);
+}

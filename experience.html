@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Scroll-driven particle space experience">
+  <title>Particle Experience · Blue Toaster</title>
+  <link rel="stylesheet" href="css/experience.css">
+</head>
+<body>
+  <canvas id="particle-canvas"></canvas>
+
+  <div class="overlay">
+    <a class="back-link" href="index.html">← Back</a>
+
+    <div class="hint">Scroll to move forward</div>
+
+    <div class="progress-bar">
+      <div class="progress-bar__fill" id="progress-fill"></div>
+    </div>
+
+    <section class="chapter" id="chapter-1" data-start="0" data-end="0.25">
+      <span class="chapter__index">01</span>
+      <h2>Enter the void</h2>
+      <p>Roll the wheel to step through particle space.</p>
+    </section>
+
+    <section class="chapter" id="chapter-2" data-start="0.25" data-end="0.5">
+      <span class="chapter__index">02</span>
+      <h2>Accelerate</h2>
+      <p>Velocity carries you forward with inertia and drag.</p>
+    </section>
+
+    <section class="chapter" id="chapter-3" data-start="0.5" data-end="0.75">
+      <span class="chapter__index">03</span>
+      <h2>Deep field</h2>
+      <p>Particles recycle from the horizon as you advance.</p>
+    </section>
+
+    <section class="chapter" id="chapter-4" data-start="0.75" data-end="1">
+      <span class="chapter__index">04</span>
+      <h2>Arrival</h2>
+      <p>Scroll back to return, or head home.</p>
+    </section>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="js/particle-experience.js"></script>
+</body>
+</html>
