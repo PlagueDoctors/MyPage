@@ -13,6 +13,7 @@
   const fontSize = 10;
   const trailLength = 70;
   const fallSpeed = 0.30;
+  const streamsPerColumn = 2;
   const minAlpha = 0.12;
   const FPS_REF = 60;
   const MUTATE_RATIO = 0.3;
@@ -79,7 +80,9 @@
     }
 
     drops = Array.from({ length: columns }, () =>
-      -Math.random() * trailLength
+      Array.from({ length: streamsPerColumn }, () =>
+        -Math.random() * trailLength
+      )
     );
     lastTime = 0;
   }
@@ -102,27 +105,29 @@
     const cellCenterX = fontSize / 2;
 
     for (let i = 0; i < columns; i++) {
-      drops[i] += move;
-      const head = drops[i];
+      for (let s = 0; s < streamsPerColumn; s++) {
+        drops[i][s] += move;
+        const head = drops[i][s];
 
-      const startRow = Math.max(0, Math.ceil(head - trailLength + 1));
-      const endRow = Math.min(bottomRow, Math.floor(head));
+        const startRow = Math.max(0, Math.ceil(head - trailLength + 1));
+        const endRow = Math.min(bottomRow, Math.floor(head));
 
-      for (let r = startRow; r <= endRow; r++) {
-        const t = head - r;
-        if (t < 0 || t >= trailLength) continue;
+        for (let r = startRow; r <= endRow; r++) {
+          const t = head - r;
+          if (t < 0 || t >= trailLength) continue;
 
-        const fade = 1 - t / trailLength;
-        const alpha = fade * fade * fade;
-        if (alpha < minAlpha) continue;
+          const fade = 1 - t / trailLength;
+          const alpha = fade * fade * fade;
+          if (alpha < minAlpha) continue;
 
-        const gray = Math.floor(80 + fade * 175);
-        ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${alpha})`;
-        ctx.fillText(grid[i][r], i * fontSize + cellCenterX, r * fontSize);
-      }
+          const gray = Math.floor(80 + fade * 175);
+          ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${alpha})`;
+          ctx.fillText(grid[i][r], i * fontSize + cellCenterX, r * fontSize);
+        }
 
-      if (head - trailLength > bottomRow) {
-        drops[i] = -Math.random() * trailLength;
+        if (head - trailLength > bottomRow) {
+          drops[i][s] = -Math.random() * trailLength;
+        }
       }
     }
 
