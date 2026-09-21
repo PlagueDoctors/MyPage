@@ -191,14 +191,48 @@ node tools/build-pointcloud.mjs --glb 你的模型.glb --out myshape  # 采样�
 
 ## 部署到 GitHub Pages
 
+**必须走构建流程。** 本项目的 `index.html` 是 Vite 的**源码入口**（引用 `/src/main.ts`），
+不是可以直接发布的静态页面。如果让 GitHub Pages 发布 `main` 分支的根目录，浏览器会
+因为 `/src/main.ts` 的 MIME 类型不是 JavaScript 而拒绝执行模块脚本 —— JS 从不运行，
+而章节内容由 JS 从配置渲染，结果就是**一片空白**。
+
+`.github/workflows/deploy.yml` 已经处理好这条链路：`npm ci → typecheck → build → 部署 dist/`。
+
+### 首次启用（只需一次）
+
+把 **Settings → Pages → Build and deployment → Source** 改为 **GitHub Actions**。
+
+> ⚠️ 这一步必须手动做。`actions/configure-pages` 的 `enablement` 默认为 `false`，
+> 且需要 PAT 才能启用 Pages（`GITHUB_TOKEN` 不够），所以它**不会**替你切换。
+> 如果 Source 停留在 "Deploy from a branch"，deploy 作业会失败并提示。
+
+等效的命令行做法：
+
 ```bash
-npm run build
-npx gh-pages -d dist      # 或把 dist 推到 gh-pages 分支
+gh api -X PUT repos/PlagueDoctors/MyPage/pages -f build_type=workflow
 ```
 
-仓库 **Settings → Pages** → Source 选 `gh-pages` 分支。
+### 日常发布
 
-`vite.config.ts` 里 `base: "./"` 用的是相对路径，因此**仓库名与自定义域名都无需改配置**。
+```bash
+git push origin main      # 推送即触发构建与部署
+```
+
+`vite.config.ts` 里 `base: "./"` 用的是相对路径，所以**仓库名与自定义域名都无需改配置**。
+
+### 页面仍然是空白时怎么排查
+
+页面内置了引导看门狗：如果模块脚本在 3 秒内没有执行，会直接把原因和修复方式显示在页面上，
+而不是留一张没有任何信息的黑页。看到那个面板就说明**构建产物没有被正确发布**。
+
+也可以用 curl 快速判断线上到底是源码还是产物：
+
+```bash
+curl -s https://plaguedoctors.github.io/MyPage/ | grep -o 'src="[^"]*"'
+```
+
+- 出现 `./assets/index-xxxx.js` → 正常，发布的是构建产物
+- 出现 `/src/main.ts` → 发布的是源码目录，Source 没切成 GitHub Actions
 
 ## 技术栈
 
