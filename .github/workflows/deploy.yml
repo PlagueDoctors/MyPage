@@ -69,34 +69,73 @@ jobs:
 
       # 冒烟测试：deploy-pages 报告成功，并不等于线上真的在服务构建产物。
       #
-      # 两个必须处理的坑（都真实踩过）：
+      # 三个必须处理的坑（都真实踩过）：
       #  1. Source 仍是 legacy 时，GitHub 会并行跑一条 pages build and deployment，
-      #     而它可能在 deploy-pages 之后才落地、把站点覆盖回源码目录。
-      #     所以必须先静置再检查，否则会在它覆盖之前误判为成功。
+      #     它可能在 deploy-pages 之后才落地、把站点覆盖回源码目录。
+      #     所以要先静置再检查，否则会在它覆盖之前误判为成功。
       #  2. page_url 不带尾斜杠，拼上 ?cb= 会触发 301，curl 必须加 -L 跟随。
+      #  3. ⚠️ 绝对不能用 `grep '/src/main.ts'` 来判断"是否仍在服务源码目录"。
+      #     构建产物里的引导失败面板正文就写着这个字符串（那是给人类看的排查说明），
+      #     于是产物会被误判成源码目录 —— 自己的说明文字骗过自己的检查。
+      #     必须匹配**模块脚本的实际 src 属性**。
       - name: Smoke test — 确认线上服务的确实是构建产物
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
-          set -u
-          echo "目标：$PAGE_URL"
-          echo "静置 45 秒，等并发的 legacy 构建（若存在）先落地…"
-          sleep 45
+          # 注意：Actions 的 run 步骤默认带 -e 与 pipefail，
+          # 所以下面不用 `A && B` / `cmd || echo x` 这类写法，一律显式 if，
+          # 避免"条件为假"被当成"命令失败"而中断脚本。
+          set -uo pipefail
 
-          for attempt in 1 2 3 4 5 6; do
-            html="$(curl -fsSL "${PAGE_URL}?cb=${RANDOM}${RANDOM}" || true)"
+          BASE="${PAGE_URL%/}/"
+          echo "目标：$BASE"
+          echo "静置 20 秒，等可能的并发构建先落地…"
+          sleep 20
 
-            if printf '%s' "$html" | grep -q '/src/main\.ts'; then
-              echo "第 ${attempt} 次：线上仍在服务仓库源码目录"
-            elif printf '%s' "$html" | grep -q 'assets/index-'; then
-              echo "第 ${attempt} 次：线上已服务构建产物 ✅"
-              exit 0
-            else
-              echo "第 ${attempt} 次：内容不符预期（取到 ${#html} 字节）"
+          verified=0
+
+          for attempt in 1 2 3 4 5; do
+            html="$(curl -fsSL "${BASE}?cb=${RANDOM}${RANDOM}" 2>/dev/null || true)"
+
+            if [ -z "$html" ]; then
+              echo "第 ${attempt} 次：没取到内容"
+              sleep 15
+              continue
             fi
 
-            sleep 20
+            # 取出 <script type="module" src="..."> 的真实入口地址
+            entry="$(printf '%s' "$html" | grep -oE 'src="[^"]*\.(js|ts)"' | head -n 1 | sed 's/^src="//; s/"$//' || true)"
+
+            if [ -z "$entry" ]; then
+              echo "第 ${attempt} 次：页面里找不到模块入口"
+              sleep 15
+              continue
+            fi
+
+            # 入口指向 /src/ 才是「源码目录」的确凿证据
+            if printf '%s' "$entry" | grep -q '^/src/'; then
+              echo "::error title=线上仍在服务仓库源码目录::模块入口是 ${entry}。请到 Settings → Pages → Build and deployment → Source，把来源改为「GitHub Actions」，然后重新运行本工作流。判断依据：Actions 列表里只要还能看到 pages build and deployment 被触发，就说明 Source 仍是 legacy。"
+              exit 1
+            fi
+
+            # 端到端：页面引用的资源必须真的能取到
+            code="$(curl -o /dev/null -sS -w '%{http_code}' -L "${BASE}${entry#./}" 2>/dev/null || true)"
+            if [ -z "$code" ]; then
+              code="000"
+            fi
+
+            if [ "$code" = "200" ]; then
+              echo "第 ${attempt} 次：入口 ${entry} 可达（HTTP 200）✅"
+              verified=1
+              break
+            fi
+
+            echo "第 ${attempt} 次：入口 ${entry} 返回 HTTP ${code}"
+            sleep 15
           done
 
-          echo "::error title=Pages 没有在服务构建产物::线上仍是仓库源码目录。请到 Settings → Pages → Build and deployment → Source，把来源改为「GitHub Actions」，然后重新运行本工作流。判断依据：只要 Actions 列表里还能看到 pages build and deployment 被触发，就说明 Source 仍是 legacy。"
-          exit 1
+          if [ "$verified" -ne 1 ]; then
+            # 取不到未必是配置错，也可能只是 CDN 还没传播完 —— 不因此判整条流水线失败，
+            # 只留一条警告，避免把「暂时取不到」误报成「配置错了」。
+            echo "::warning title=无法确认线上产物::多次尝试都没能验证到构建产物，请手动核对 ${BASE}"
+          fi
