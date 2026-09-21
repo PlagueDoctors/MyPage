@@ -63,6 +63,14 @@
 - 站点 URL：https://plaguedoctors.github.io/MyPage/ （账号 PlagueDoctors）
 - 页面内置**引导看门狗**：模块脚本 3 秒内没执行就把排查面板显示出来，
   不会再出现"无声黑屏"。
+- ⚠️ **`deploy-pages` 报成功 ≠ 站点已更新**。Source 仍是 legacy 时，
+  GitHub 会同时跑一条 `pages build and deployment`，它最后落地、把站点覆盖回源码目录，
+  于是「所有指示灯全绿，站点却是坏的」（2026-09-21 实际发生）。
+  **旁证**：Actions 列表里出现 `pages build and deployment` 就说明 Source 还是 legacy。
+- 部署后必须验证**线上真实内容**，不能只看 CI：
+  `curl -s https://plaguedoctors.github.io/MyPage/ | grep -o 'src="[^"]*"'`
+- `deploy` job 末尾已有**冒烟测试**（`e167a49`）：断言线上 HTML 含 `assets/index-`，
+  不满足就报红并提示去改 Pages Source。用 PyYAML 校验过语法。
 
 ## 本机环境限制（每次操作前须知）
 
