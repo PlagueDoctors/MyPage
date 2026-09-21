@@ -66,3 +66,30 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # 冒烟测试：deploy-pages 报告成功，并不等于线上真的在服务构建产物。
+      # 如果 Pages 的 Source 还是「Deploy from a branch」，GitHub 会同时跑一条
+      # 旧的 `pages build and deployment`，而它最后落地、把站点覆盖回源码目录 ——
+      # 结果就是「所有指示灯全绿，站点却是坏的」。
+      # 这一步把那种状态变成一次明确的红灯，并直接告诉你怎么修。
+      - name: Smoke test — 确认线上服务的确实是构建产物
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -u
+          echo "目标：$PAGE_URL"
+          for attempt in 1 2 3 4 5 6; do
+            html="$(curl -fsS "${PAGE_URL}?cb=${RANDOM}${RANDOM}" || true)"
+            if printf '%s' "$html" | grep -q 'assets/index-'; then
+              echo "第 ${attempt} 次尝试：线上已服务构建产物 ✅"
+              exit 0
+            fi
+            if printf '%s' "$html" | grep -q '/src/main.ts'; then
+              echo "第 ${attempt} 次尝试：仍在服务仓库源码目录，等待传播…"
+            else
+              echo "第 ${attempt} 次尝试：内容不符预期，等待传播…"
+            fi
+            sleep 20
+          done
+          echo "::error title=Pages Source 尚未切换为 GitHub Actions::线上仍在服务仓库源码目录，构建产物没有被采用。请到 Settings → Pages → Build and deployment → Source，把来源改为「GitHub Actions」，然后重新运行本工作流。"
+          exit 1
