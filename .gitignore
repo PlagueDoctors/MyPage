@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.vite/
+*.local
+
+# 编辑器与系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 说明：public/pointcloud/*.bin 是**生产资源**（离线管线的产物），需要提交。
+# 它等价于图片或字体 —— 运行时直接 fetch，不参与构建。

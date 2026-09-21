@@ -1,0 +1,562 @@
+/* ══════════════════════════════════════════════════════════════════════
+   设计令牌
+   JS 会用 palette.ts 的 CSS_TOKENS 覆盖同名变量，这里给的是无 JS 时的默认值。
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg: #01020a;
+  --ink: #eaf0ff;
+  --ink-dim: #9aa7c4;
+  --ink-faint: #5b6684;
+  --line: rgba(154, 167, 196, 0.22);
+  --line-strong: rgba(154, 167, 196, 0.42);
+  --accent: #9ecbff;
+
+  --chapter-count: 4;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   默认状态 = 可读的静态文档
+   这是最重要的一条：默认样式**不依赖 JS**。
+   旧实现用 overflow:hidden + opacity:0 打底，JS 一挂就是全黑屏。
+   ══════════════════════════════════════════════════════════════════════ */
+html {
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 静态模式下给一个纯 CSS 星空底，避免看起来像"坏了" */
+html[data-mode="static"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(158, 203, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 78% 12%, rgba(201, 182, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 34% 72%, rgba(127, 227, 212, 0.45), transparent),
+    radial-gradient(1px 1px at 62% 84%, rgba(158, 203, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 88% 56%, rgba(214, 194, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 24% 42%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 52% 28%, rgba(158, 203, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 6% 88%, rgba(201, 182, 255, 0.4), transparent);
+  background-color: var(--bg);
+}
+
+/* 静态布局：章节是普通文档流，全部可见、可选中、可被搜索引擎与读屏器读取 */
+.chapters {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 14vh 1.75rem 18vh;
+}
+
+.chapter {
+  padding: 9vh 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chapter:last-child {
+  border-bottom: 0;
+}
+
+.chapter__index {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.28em;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.chapter__title {
+  margin: 0.75rem 0 1rem;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.chapter__body {
+  max-width: 34rem;
+  color: var(--ink-dim);
+  font-size: 1.0625rem;
+}
+
+/* ── 默认状态下隐藏体验相关的装饰 ── */
+#stage,
+.scroll-track,
+#orbit,
+#instrument,
+#hint,
+#preloader {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   预加载器
+   ══════════════════════════════════════════════════════════════════════ */
+html[data-mode="loading"] #preloader {
+  display: grid;
+}
+
+html[data-mode="loading"] {
+  overflow: hidden;
+}
+
+.preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity 0.55s var(--ease);
+}
+
+.preloader.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.preloader__panel {
+  width: min(22rem, 78vw);
+  text-align: center;
+}
+
+.preloader__title {
+  margin-bottom: 2.25rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.preloader__value {
+  font-family: var(--mono);
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.preloader__track {
+  position: relative;
+  height: 1px;
+  margin: 1.25rem 0 1rem;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.preloader__fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.18s linear;
+}
+
+.preloader__fill.is-indeterminate {
+  opacity: 0.5;
+}
+
+.preloader__fill.is-error {
+  background: #f09595;
+}
+
+.preloader__status,
+.preloader__hint {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
+
+.preloader__hint {
+  margin-top: 0.6rem;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   体验模式
+   ══════════════════════════════════════════════════════════════════════ */
+html[data-mode="experience"] #stage,
+html[data-mode="experience"] #hint {
+  display: block;
+}
+
+html[data-mode="experience"] #orbit,
+html[data-mode="experience"] #instrument {
+  display: flex;
+}
+
+html[data-mode="experience"] body {
+  /* 高度由 .scroll-track 撑开，正文层变成固定 HUD */
+  overflow-x: hidden;
+}
+
+html[data-mode="experience"] .scroll-track {
+  display: block;
+  /* 每章 135vh。这个值直接决定"滚一格走多远"，是手感调参的入口之一 */
+  height: calc(var(--chapter-count) * 135vh);
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  /* 画布不接收指针事件，滚动与选中全部交给下面的文档 */
+  pointer-events: none;
+}
+
+html[data-mode="experience"] .chapters {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+html[data-mode="experience"] .chapter {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 1.75rem;
+  border-bottom: 0;
+  opacity: 0;
+  /* 只动合成属性 —— 每帧 JS 只写 opacity 与 transform，不触发重排 */
+  will-change: opacity, transform;
+}
+
+html[data-mode="experience"] .chapter__inner {
+  width: min(44rem, 100%);
+  text-align: center;
+}
+
+html[data-mode="experience"] .chapter__title {
+  text-shadow: 0 0 42px rgba(4, 6, 20, 0.9), 0 2px 18px rgba(4, 6, 20, 0.75);
+}
+
+html[data-mode="experience"] .chapter__body {
+  margin: 0 auto;
+  text-shadow: 0 0 26px rgba(4, 6, 20, 0.9), 0 1px 10px rgba(4, 6, 20, 0.8);
+}
+
+html[data-mode="experience"] .chapter__index {
+  letter-spacing: 0.42em;
+}
+
+/* ── 滚动提示 ── */
+#hint {
+  position: fixed;
+  left: 50%;
+  bottom: 2.25rem;
+  z-index: 4;
+  transform: translateX(-50%);
+  font-size: 0.6875rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  pointer-events: none;
+  transition: opacity 0.7s var(--ease);
+}
+
+#hint.is-hidden {
+  opacity: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   轨道导航
+   ══════════════════════════════════════════════════════════════════════ */
+#orbit {
+  position: fixed;
+  right: 2.5rem;
+  top: 50%;
+  z-index: 5;
+  width: 104px;
+  height: 104px;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.9s var(--ease);
+}
+
+#orbit.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.orbit__graphic {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.orbit__ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+
+.orbit__nav {
+  position: absolute;
+  inset: 0;
+}
+
+.orbit__node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.orbit__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: background 0.35s var(--ease), transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
+}
+
+.orbit__node:hover .orbit__dot {
+  background: var(--ink-dim);
+  transform: scale(1.35);
+}
+
+.orbit__node.is-active .orbit__dot {
+  background: var(--accent);
+  transform: scale(1.5);
+  box-shadow: 0 0 0 4px rgba(158, 203, 255, 0.16);
+}
+
+.orbit__node:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.orbit__label {
+  position: absolute;
+  right: calc(100% + 12px);
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+  pointer-events: none;
+}
+
+.orbit__node:hover .orbit__label,
+.orbit__node:focus-visible .orbit__label,
+.orbit__node.is-active .orbit__label {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.orbit__readout {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.orbit__current {
+  color: var(--ink);
+}
+
+.orbit__total {
+  color: var(--ink-faint);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   叙事读数
+   ══════════════════════════════════════════════════════════════════════ */
+#instrument {
+  position: fixed;
+  left: 2.5rem;
+  bottom: 2.25rem;
+  z-index: 5;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 11rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.9s var(--ease);
+}
+
+#instrument.is-visible {
+  opacity: 1;
+}
+
+.instrument__row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.instrument__value {
+  color: var(--ink);
+}
+
+.instrument__unit {
+  color: var(--ink-faint);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+}
+
+.instrument__chapter {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+}
+
+.instrument__track {
+  height: 1px;
+  width: 100%;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.instrument__fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(158, 203, 255, 0.35), var(--accent));
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   角落链接与无 JS 兜底
+   ══════════════════════════════════════════════════════════════════════ */
+.corner-link {
+  position: fixed;
+  top: 1.75rem;
+  right: 2.5rem;
+  z-index: 6;
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-decoration: none;
+  transition: color 0.3s var(--ease);
+}
+
+.corner-link:hover {
+  color: var(--ink);
+}
+
+.corner-link:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.noscript-fallback {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 12vh 1.75rem 16vh;
+}
+
+.noscript-fallback h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+}
+
+.noscript-fallback p {
+  margin-top: 1.25rem;
+  color: var(--ink-dim);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   响应式与降级
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  #orbit {
+    right: 1.25rem;
+    top: auto;
+    bottom: 1.5rem;
+    transform: none;
+    scale: 0.82;
+    transform-origin: bottom right;
+  }
+
+  #instrument {
+    left: 1.25rem;
+    bottom: 1.5rem;
+    min-width: 8rem;
+  }
+
+  .orbit__label {
+    display: none;
+  }
+
+  html[data-mode="experience"] .chapter__body {
+    font-size: 0.9375rem;
+  }
+
+  #hint {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* 无 JS：把静态内容放出来，并给一句说明 */
+.noscript-note {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  padding: 0.6rem 1rem;
+  background: rgba(158, 203, 255, 0.12);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  text-align: center;
+}

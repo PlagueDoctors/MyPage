@@ -1,0 +1,22 @@
+{
+  "name": "mypage",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "description": "Blue Toaster — personal page. Scroll-driven point cloud experience.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "pointcloud": "node tools/build-pointcloud.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

@@ -1,251 +1,208 @@
 # Blue Toaster
 
-个人 GitHub Pages 主页。首页为滚轮驱动的粒子空间体验，附带代码雨测试页。
+个人 GitHub Pages 主页。一次滚轮驱动的点云空间体验：四章叙事，粒子场在穿行中聚合为形状。
+
+> 重构方案与背景分析见 [`REFACTOR-PLAN.md`](./REFACTOR-PLAN.md)。
+> 旧版本（滚轮飞轮 + CPU 逐帧变形）保留在 git tag `pre-refactor`。
+
+---
+
+## 快速开始
+
+```bash
+npm install
+npm run dev        # 开发服务器 → http://127.0.0.1:5173
+npm run build      # 生产构建 → dist/
+npm run preview    # 预览构建产物 → http://127.0.0.1:4173
+npm run typecheck  # 类型检查
+npm run pointcloud # 重新生成点云数据
+```
+
+需要 Node 18+（本机为 22.22.2）。
 
 ## 项目结构
 
 ```
 MyPage/
-├── index.html                  # 首页：粒子空间 + 章节编排
-├── test.html                   # 测试页：2D 代码雨
-├── css/
-│   ├── experience.css          # 首页样式
-│   └── style.css               # 代码雨页样式
-├── js/
-│   ├── particle-experience.js  # 首页动画与编排逻辑
-│   └── code-rain.js            # 代码雨动画
-├── models/
-│   ├── Duck.glb                # CC0 示例模型
-│   └── Fox.glb
-└── README.md
+├── index.html                     # 骨架。不含任何正文，章节由配置渲染
+├── src/
+│   ├── main.ts                    # 引导 + 主循环
+│   ├── config/
+│   │   ├── chapters.config.ts     # ★ 唯一真相源
+│   │   ├── validate.ts            # 开发期配置断言
+│   │   └── palette.ts             # 色彩令牌（WebGL 与 DOM 共用）
+│   ├── core/
+│   │   ├── clock.ts               # 帧率无关阻尼、Catmull-Rom、噪声
+│   │   ├── ticker.ts              # rAF 循环 + 帧时间统计
+│   │   ├── device.ts              # 能力探测 + 质量档位 + 自适应降档
+│   │   ├── timeline.ts            # 原生滚动 → warp 映射 → 阻尼 progress
+│   │   └── chapters.ts            # enter / hold / exit 状态机
+│   ├── data/pointcloud.ts         # 点云加载（带真实字节进度）
+│   ├── gl/
+│   │   ├── renderer.ts            # 渲染器 / 尺寸换算
+│   │   ├── pointcloud.ts          # 几何装配 + uniform 驱动
+│   │   ├── camerarig.ts           # 关键帧飞行轨道
+│   │   └── shaders/               # point.vert.glsl / point.frag.glsl
+│   ├── ui/
+│   │   ├── overlay.ts             # 章节文案层
+│   │   ├── nav.ts                 # 轨道导航
+│   │   ├── instrument.ts          # 叙事读数
+│   │   ├── preloader.ts           # 真实进度预加载
+│   │   └── fallback.ts            # 静态降级
+│   └── styles/main.css
+├── tools/build-pointcloud.mjs     # 离线点云构建管线
+├── public/pointcloud/             # 量化后的点数据 + manifest
+├── test.html  css/style.css  js/code-rain.js   # 代码雨彩蛋页（独立，未改动）
+└── models/                        # 仅作 --glb 管线示例，运行时不再使用
 ```
 
-所有资源均通过相对路径引用，可直接部署到 GitHub Pages。首页依赖 Three.js（CDN）与 ES Module，需通过本地服务器访问。
+## 改内容只需要动一个文件
 
-## 本地预览
+`src/config/chapters.config.ts` 是**唯一真相源**。页面文案、导航、读数、粒子行为、相机运动
+全部由它派生 —— 改这里，全站同步。
 
-```powershell
-python -m http.server 8765
+```ts
+{
+  id: "field",                       // 深链锚点 #chapter-field
+  index: "02", navLabel: "Field",
+  title: "The field", body: "……",
+  range: [0.2, 0.48],                // 在 progress 0→1 上的区间
+  hold:  [0.26, 0.42],               // 停留窗口：此间形状保持成形
+  fadeIn: 0.035, fadeOut: 0.035,     // 文案淡入淡出时长（fadeOut: 0 = 永不淡出）
+  aperture: 0.62,                    // 景深光圈：越大越虚化
+  dissolve: true,                    // 离场时是否溶解回隧道
+  shape: {
+    src: "sphere", scale: 26, spin: 1.15,
+    position: [0, 0, -112],
+    accent: 0x58e0c8, accentMix: 0.55,
+  },
+}
 ```
 
-- 首页：[http://127.0.0.1:8765](http://127.0.0.1:8765)
-- 代码雨测试页：[http://127.0.0.1:8765/test.html](http://127.0.0.1:8765/test.html)
+**改完不用怕写错**：`validate.ts` 会在开发环境启动瞬间断言 —— 区间是否首尾相接、
+`hold` 是否被 `range` 包含、`fadeIn` 是否在 `hold` 之前完成、末章是否误设了 `fadeOut`
+（会导致最后一屏空白）、相机关键帧是否覆盖 `[0, 1]`。任何一条不满足直接抛错并指出是哪一章。
 
----
+相机轨道是同文件里的 `CAMERA_TRACK`，用非均匀节点的 Catmull-Rom 插值，
+一阶导连续、严格过点、不过冲。
 
-## 内容编排动画模块
+## 三处关键实现
 
-首页动画由 **单一进度值 `progress`（0 → 1）** 统一驱动。滚轮不滚动页面，而是改变 `progress`；所有视觉与文案效果都挂载在这条时间轴上。
-
-### `progress` 区间数字是什么？
-
-`progress` 是整页体验的**归一化进度**，取值 `0.0`（起点）到 `1.0`（终点），与像素、秒数无关。
-
-| 写法 | 含义 |
-|------|------|
-| `0` | 刚进入页面，第一章开头 |
-| `0.25` | 走完总路程的 25%，第一章结束 / 第二章开始 |
-| `0.5` | 正中间，第三章开始 |
-| `1` | 最后一章末尾 |
-
-HTML 里 `data-start="0.25" data-end="0.5"` 表示：**当 `progress` 落在这个闭区间内时，该章节文案参与显隐计算**（两端约 7% 淡入淡出）。  
-JS 里 `MODEL_CHAPTERS` 的 `start` / `end` 含义相同，但控制的是**粒子聚合模型**的时机。
-
-因此区间数字不是「第几秒」，而是「整段旅程的百分比位置」。四章均分时每章占 25% 路程；若希望某章更长，可改为例如 `0 – 0.4 – 0.7 – 1.0`。
-
-### 架构概览
+### 1. 滚动模型：原生滚动 + warp 映射
 
 ```
-滚轮 / 触控输入
-      ↓
-  velocity（惯性速度）
-      ↓
-  progress ∈ [0, 1]          ← 全局时间轴
-      ↓
-  ┌─────────────┬──────────────────┬─────────────────┐
-  │  文案层      │  粒子隧道层        │  模型聚合层        │
-  │  .chapter   │  freePositions   │  modelTargets   │
-  └─────────────┴──────────────────┴─────────────────┘
+滚动 → raw ∈ [0,1] → warp() → dt 归一化阻尼 → progress
 ```
 
-### 1. 输入层（`particle-experience.js`）
+- **用原生滚动**，于是键盘、滚动条、`PageDown` / `Home` / `End`、读屏器语义全部免费获得。
+- **`warp()`** 把「停留窗口占更多滚动距离」表达成时间轴结构自身的属性。
+  主旋钮是 `timeline.ts` 里的 `HOLD_SCROLL_BOOST`：
+  `1.0` 完全线性无停顿感，`1.45` 停留段吃掉约 2/3 行程（当前值），`3.0` 几乎粘在每章上。
+- **所有随时间推进的量都乘 `dt`**，阻尼用 `1 - exp(-λ·dt)` 而非「每帧衰减 x%」。
+  这两条合起来保证手感不随帧率漂移。
+- 每章占 `135vh` 滚动距离（`main.css` 的 `.scroll-track`），是另一个手感入口。
 
-| 行为 | 实现 |
-|------|------|
-| 滚轮向下 | `progress` 增大，相机前进 |
-| 滚轮向上 | `progress` 减小，相机后退 |
-| 惯性 | `velocity` 每帧乘以 `FRICTION`（0.82）衰减 |
-| 章节内步进 | 灵敏度 `SENSITIVITY_IN_CHAPTER`（0.00004） |
-| 章节切换区步进 | 边界 ±4.5% 内使用 `SENSITIVITY_IN_TRANSITION`（0.00032） |
+### 2. GPU 点云着色器
 
-**滚轮太快时如何延长？** 在 `js/particle-experience.js` 顶部调小下列值（越小越慢）：
+自由隧道与形状目标是两份**静态**缓冲，变形在顶点着色器里 `mix`：
 
-| 常量 | 作用 | 调慢方向 |
-|------|------|----------|
-| `SENSITIVITY_IN_CHAPTER` | 章节内每滚一格前进多少 | 减小 |
-| `SENSITIVITY_IN_TRANSITION` | 切换边界附近前进多少 | 减小 |
-| `MAX_VELOCITY` | 惯性速度上限 | 减小 |
-| `FRICTION` | 每帧速度衰减（越接近 1 滑得越远） | 减小（如 0.75） |
-
-想让**某一章占更多滚轮行程**，改 `index.html` 的 `data-start` / `data-end` 拉大该章区间，并同步 `MODEL_CHAPTERS` 与 `CHAPTER_BOUNDARIES`。
-
-### 2. 文案编排层（`index.html` + `experience.css`）
-
-每个章节是一个全屏 `<section class="chapter">`，通过 `data-start` / `data-end` 声明在 `progress` 轴上的区间：
-
-```html
-<section class="chapter" data-start="0.25" data-end="0.5">
-  <span class="chapter__index">02</span>
-  <h2>Particle Duck</h2>
-  <p>…</p>
-</section>
+```glsl
+vec3 p = mix(position, tgt, m) + swirl * (burst * uJitter + ambient * 0.55);
 ```
 
-显隐由 `chapterOpacity()` 计算：区间两端各 7% 做淡入淡出，中间完全可见。同时伴随 `translateY` 与 `scale` 微动。
+每帧 CPU 只写几个 uniform —— 复杂度 O(1)，与粒子数无关，**零顶点数据上传**。
 
-**当前章节划分：**
+**伪景深**（`point.vert.glsl` 第 4 段）是整个视觉升级的核心：
 
-| 章节 | progress 区间 | 文案 | 粒子效果 |
-|------|---------------|------|----------|
-| 01 | 0.00 – 0.25 | Enter the void | 纯隧道飞行 |
-| 02 | 0.25 – 0.50 | Particle Duck | 聚合为 Duck 模型 |
-| 03 | 0.50 – 0.75 | Particle Fox | 聚合为 Fox 模型 |
-| 04 | 0.75 – 1.00 | Return | 再次聚合 Duck，末端散开 |
-
-### 3. 粒子隧道层
-
-- 4000 个圆形粒子，随机分布在圆柱形隧道内
-- `freePositions` 记录隧道中的「自由」坐标
-- 前进时 z 增大，超出近裁剪面后回收到远端；后退时反向回收
-- 仅在 `morph < 0.98` 时更新隧道运动
-
-### 4. 模型聚合层
-
-- 从 `models/*.glb` 提取网格顶点，随机采样 4000 点作为 `modelTargets`
-- `MODEL_CHAPTERS` 配置章节与模型的映射
-- `getMorphState(progress)` 在章节内用 `sin` 曲线计算聚合强度：进入章节为 0，中间为 1，离开章节回到 0
-- 显示位置 = `lerp(freePositions, rotatedModelTarget, morph)`
-
-### 5. 关键配置常量
-
-| 常量 | 位置 | 作用 |
-|------|------|------|
-| `CHAPTER_BOUNDARIES` | JS | 章节切换灵敏度触发点 |
-| `MODEL_CHAPTERS` | JS | 章节 → 模型索引 |
-| `MODEL_SOURCES` | JS | 模型文件路径 |
-| `data-start` / `data-end` | HTML | 章节 → 文案显隐区间 |
-| `SENSITIVITY_*` | JS | 滚轮步进幅度 |
-| `PARTICLE_COUNT` | JS | 粒子数量 |
-
-### 当前已知局限
-
-- 章节文案与粒子效果是**两套独立配置**，改 HTML 不会自动改粒子行为，需同步修改 JS
-- 模型聚合仅在章节**中部**达到最强，首尾过渡偏快
-- 粒子数量固定，复杂模型只能近似轮廓
-- 无独立「场景状态机」，难以表达更复杂的镜头运动或连续变形
-
----
-
-## 动画需求协作方案
-
-如果你对当前效果不满意，可以按下面的模板描述想法。把填好的内容发给我，我按模块实现。
-
-### 第一步：确定参考与目标
-
-```
-【参考】
-- 参考网站 / 视频 / 截图：（如有）
-- 喜欢的部分：（例如：镜头推进感、文字出现时机、粒子组成形状的方式）
-- 不喜欢的部分：（例如：当前切换太快、模型轮廓不清晰）
-
-【目标一句话】
-- 例：滚轮向下穿越星野，每段停在一个主题文案上，粒子在背景中缓慢旋转
+```glsl
+float coc  = clamp(abs(depth - uFocal) / max(uFocal, 0.001), 0.0, 1.0);
+float blur = coc * uAperture;
+size  *= 1.0 + blur * 2.6;
+vAlpha = ... * mix(1.0, 0.22, blur);
 ```
 
-### 第二步：列出章节时间轴
+弥散圆正比于「到焦平面的距离」，越远越模糊 → 放大 + 变淡。
+`uFocal` 直接取相机到注视点的距离，所以**焦平面自动跟着每一章的形状走**，不需要手工配对。
+没有任何后期处理、没有 render target。
 
-用 `progress` 0–1 规划整页叙事。每行一章：
-
-```
-| # | 区间 | 标题 | 副文案 | 背景粒子行为 | 备注 |
-|---|------|------|--------|--------------|------|
-| 1 | 0.00-0.20 | … | … | 隧道飞行 | 开场 |
-| 2 | 0.20-0.45 | … | … | 聚合成 XX 模型 | |
-| 3 | 0.45-0.70 | … | … | 散开 → 星野 | |
-| 4 | 0.70-1.00 | … | … | 静止悬浮 | 结尾 |
-```
-
-区间不必等分，可注明「这一章要停久一点」。
-
-### 第三步：描述粒子 / 镜头行为
-
-对每一章，尽量说明：
+### 3. 章节状态机：enter / hold / exit
 
 ```
-【章节 N 粒子行为】
-- 形态：隧道 / 模型名 / 文字轮廓 / 自定义
-- 进入：从上一章如何过渡（散开、淡入、加速飞过）
-- 停留：中间做什么（旋转、呼吸脉动、颜色变化）
-- 离开：如何过渡下一章
-- 模型文件：（如有，提供 .glb 或链接）
+morph
+1 ┤        ┌────────────┐
+  │      ╱                ╲
+0 ┤────╱                    ╲────
+  └──┬──────┬────────┬──────┬──→ progress
+   range[0] hold[0]  hold[1] range[1]
+    enter     hold      exit
 ```
 
-### 第四步：描述交互手感
+`hold` 窗口内 `morph` 锁在 1，形状是**稳定**的（旧实现用 `sin(local × π)`，
+两端都归零，于是每个边界必然溶解，模型只闪一下）。
 
-```
-【滚轮手感】
-- 向下：前进 / 向上：后退（默认）
-- 章节内：慢速细调 / 快速 / 几乎不动
-- 切换时：需要大力滚过 / 轻推即过 / 自动吸附到章节中心
-- 惯性：强 / 弱 / 无
-```
+## 点云管线
 
-### 第五步：描述文案动画
-
-```
-【文案动画】
-- 出现：淡入 / 上移 / 打字机 / 逐字
-- 消失：淡出 / 下移 / 随滚轮飞出
-- 可否点击：是 / 否
+```bash
+node tools/build-pointcloud.mjs                    # 生成 4 个形状（默认，程序化）
+node tools/build-pointcloud.mjs --count 120000     # 改点数
+node tools/build-pointcloud.mjs --glb models/Fox.glb --dry-run    # 校验自有模型
+node tools/build-pointcloud.mjs --glb 你的模型.glb --out myshape  # 采样并写出
 ```
 
-### 第六步：优先级与分期
+- **面积加权 + 重心坐标采样**：累积三角形面积 → 前缀和 CDF → 二分查找 → 重心坐标。
+  这样每个三角形分到的点数正比于它的**面积**，而不是顶点数。
+  （旧实现从顶点数组里均匀随机取点，密度正比于网格细分程度 —— 大片平面上点稀疏、
+  密集网格处点扎堆，轮廓必然破碎发毛。）
+- **量化**：写成 `Int16` 归一化坐标，加载时反量化回 `Float32`。
+  文件体积减半、gzip 压缩率远好于裸浮点；而反量化只做一次，着色器里不需要任何解码逻辑。
+- **格式**：32 字节定长头（`PTC1` + count + 每轴 scale/offset）+ `Int16` 载荷。
+- 隧道场与所有形状**点数必须一致**（着色器里按下标一一配对），`registerShape()` 会校验。
+- 产物同时写 `manifest.json`，让预加载器在下载**之前**就知道总字节数，
+  于是可以并行拉取、同时显示准确百分比。
 
-```
-【必须实现】…
-【可以后期做】…
-【明确不要】…
-```
+> 换成自己的模型：走 `--glb` 那条路，然后改 `chapters.config.ts` 里的 `shape.src` 即可。
 
-### 填写示例
+## 降级路径
 
-```
-【参考】https://experience.staratlas.com — 喜欢穿越感和章节停顿
-【目标】滚轮穿越粒子空间，共 3 章个人介绍，粒子不要组模型，保持星野
+「静态可读」是 CSS 的**默认状态**，只有 JS 成功启动并确认能渲染，才主动切到体验模式。
+于是降级不是一条额外分支，而是**什么都不做**的结果。
 
-| # | 区间 | 标题 | 粒子行为 |
-|---|------|------|----------|
-| 1 | 0-0.3 | Hello | 星点迎面飞来 |
-| 2 | 0.3-0.7 | About | 减速，粒子几乎静止 |
-| 3 | 0.7-1 | Contact | 加速离开 |
+| 场景 | 行为 |
+|---|---|
+| 无 WebGL2 | 静态模式：全部章节以正常文档流呈现 + CSS 星空底 |
+| `prefers-reduced-motion: reduce` | 同上；运行中切换系统设置会即时降级 |
+| 点云加载失败 | 预加载器说明原因，内容不受影响 |
+| 完全禁用 JS | `<noscript>` 精简说明（正文由 JS 渲染，见下方待办） |
 
-【滚轮】章节内慢、切换快、有轻微吸附
-【文案】淡入淡出，不要 3D 模型
-【不要】代码雨、模型聚合
-```
+其他可访问性：真实的 `<nav>` + `<button>` 导航（可 Tab、可读屏、带 `aria-current`）、
+每章可深链（`#chapter-craft`）、方向键跳章、唯一的 `<h1>`、
+章节不可见时移出无障碍树、可见的 focus ring。
 
----
+## 已知待办
+
+- **无 JS 时的完整正文**：章节由 `chapters.config.ts` 在运行时渲染，禁用 JS 只能看到
+  `<noscript>` 精简说明。正解是加一个 build-time 插件把配置注入 `index.html`；
+  属于 `REFACTOR-PLAN.md` Phase 5 的收尾项。
+- **`prefers-reduced-motion` 的中间档**：现在是直接降级为静态文档。更好的做法是保留
+  形状静帧 + 交叉淡入 —— 内容一字不少，但仍有画面。
+- **首屏优化**：OG 图、favicon、`sitemap.xml` 尚未补。
+- **内容**：`chapters.config.ts` 里的文案是占位；`models/` 下的
+  `Duck.glb` / `Fox.glb` 是 Khronos 官方示例模型，仅供管线示例，运行时不再引用。
 
 ## 部署到 GitHub Pages
 
-1. 将项目推送到 GitHub 仓库
-2. 进入仓库 **Settings → Pages**
-3. **Build and deployment** 选择 **Deploy from a branch**
-4. 分支选择 `main`，目录选择 `/ (root)`
-5. 保存后访问 `https://<username>.github.io/<repo>/`
+```bash
+npm run build
+npx gh-pages -d dist      # 或把 dist 推到 gh-pages 分支
+```
+
+仓库 **Settings → Pages** → Source 选 `gh-pages` 分支。
+
+`vite.config.ts` 里 `base: "./"` 用的是相对路径，因此**仓库名与自定义域名都无需改配置**。
 
 ## 技术栈
 
-- HTML5 / CSS3
-- JavaScript（Canvas 2D + Three.js WebGL）
-- glTF 2.0 模型（`.glb`）
+- Vite 5 + TypeScript
+- Three.js 0.170（npm 锁定版本，具名导入以便 tree-shaking）
+- 自定义 WebGL 点云着色器（变形 + 伪景深）
+- 产物：JS 约 130 KB gzip（其中 three 117.5 KB）、CSS 2.4 KB gzip
