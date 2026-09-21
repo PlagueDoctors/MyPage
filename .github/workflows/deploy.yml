@@ -1,0 +1,68 @@
+name: Deploy to GitHub Pages
+
+# 这个工作流存在的唯一理由：本项目的 index.html 是 Vite 的**源码入口**
+# （引用了 /src/main.ts），不能被当成静态页面直接发布。
+# 必须先在 CI 里构建成 dist/，再把 dist/ 作为站点产物上传。
+#
+# ⚠️ 首次启用需要在仓库里做一次设置（只需一次）：
+#    Settings → Pages → Build and deployment → Source 选 **GitHub Actions**
+# 如果 Source 仍然是 "Deploy from a branch: main / (root)"，
+# GitHub 会继续发布源码目录，页面就是一张黑屏。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同时只保留一次部署；新的推送取消上一次未完成的部署
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 类型检查作为门禁：配置写错了（区间断裂、末章误设 fadeOut 等）
+      # 在这里就该断掉，而不是部署上去才发现
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

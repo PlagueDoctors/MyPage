@@ -505,6 +505,67 @@ html[data-mode="experience"] .chapter__index {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   引导失败提示
+   只在模块脚本没能执行时出现（由 index.html 的内联看门狗置位）。
+   整个面板不透明覆盖全屏，所以不必去操心其他 chrome 的显隐。
+   ══════════════════════════════════════════════════════════════════════ */
+#boot-failure {
+  display: none;
+}
+
+html[data-boot-failure="true"] #boot-failure {
+  display: grid;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  place-items: center;
+  padding: 2rem;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+.boot-failure__panel {
+  width: min(38rem, 100%);
+  padding: 1.75rem;
+  border: 1px solid rgba(240, 149, 149, 0.4);
+  border-radius: 12px;
+  background: rgba(80, 19, 19, 0.32);
+}
+
+.boot-failure__title {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: #f7c1c1;
+}
+
+.boot-failure__body {
+  margin-top: 0.9rem;
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: var(--ink-dim);
+}
+
+.boot-failure__body--muted {
+  color: var(--ink-faint);
+}
+
+.boot-failure__body code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(154, 167, 196, 0.14);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+
+.boot-failure__body strong,
+.boot-failure__body em {
+  color: var(--ink);
+  font-weight: 500;
+  font-style: normal;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    响应式与降级
    ══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {

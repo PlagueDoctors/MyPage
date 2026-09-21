@@ -35,6 +35,19 @@ import { OrbitNav } from "./ui/nav";
 import { ChapterOverlay } from "./ui/overlay";
 import { Preloader } from "./ui/preloader";
 
+declare global {
+  interface Window {
+    /** index.html 的引导看门狗读取这个标志 */
+    __mypageBooted?: boolean;
+  }
+}
+
+// 模块一旦开始执行就立刻置位。
+// 只要这一行跑到了，就说明构建产物本身是好的 —— 页面若仍然是黑屏，
+// 问题在渲染或数据，而不在"脚本根本没被加载"。
+// 反过来，这行没跑到，index.html 里的看门狗就会把那份排查说明显示出来。
+window.__mypageBooted = true;
+
 function el(id: string): HTMLElement {
   const node = document.getElementById(id);
   if (!node) throw new Error(`index.html 缺少 #${id} 容器`);

@@ -25,6 +25,29 @@
 
     <div id="preloader"></div>
 
+    <!-- 引导失败提示。只在模块脚本没能执行时由下面的看门狗显示。
+         存在的意义：把「一张没有任何信息的黑页」变成「能自己说明问题的页面」。
+         上一次的事故正是这个盲区 —— 站点发布的是源码目录，脚本被浏览器拒绝执行，
+         而页面上没有任何东西能告诉你原因。 -->
+    <div id="boot-failure" role="alert">
+      <div class="boot-failure__panel">
+        <p class="boot-failure__title">页面脚本没有加载成功</p>
+        <p class="boot-failure__body">
+          本项目的 <code>index.html</code> 是构建工具的<strong>源码入口</strong>，必须先构建成
+          <code>dist/</code> 再发布。如果 GitHub Pages 的 Source 被设成了
+          <em>Deploy from a branch → main / (root)</em>，它会把源码目录直接当站点发布，
+          浏览器就会因为 <code>/src/main.ts</code> 的 MIME 类型不是 JavaScript 而拒绝执行。
+        </p>
+        <p class="boot-failure__body">
+          <strong>修复方式</strong>：仓库 Settings → Pages → Build and deployment →
+          Source 选择 <strong>GitHub Actions</strong>，然后重新运行 Deploy 工作流。
+        </p>
+        <p class="boot-failure__body boot-failure__body--muted">
+          本地预览：<code>npm install &amp;&amp; npm run dev</code>
+        </p>
+      </div>
+    </div>
+
     <noscript>
       <p class="noscript-note">已启用纯文本版本 · 开启 JavaScript 可进入粒子空间体验</p>
       <section class="noscript-fallback">
@@ -39,6 +62,17 @@
         </p>
       </section>
     </noscript>
+
+    <!-- 引导看门狗。纯内联普通脚本，不依赖任何构建产物，所以永远会执行。
+         模块脚本一旦成功执行，main.ts 会立刻把 __mypageBooted 置为 true；
+         3 秒后仍未置位，就说明模块根本没跑起来（404 / MIME 不对 / 语法不支持），
+         此时把上面那块说明显示出来。 -->
+    <script>
+      window.setTimeout(function () {
+        if (window.__mypageBooted) return;
+        document.documentElement.dataset.bootFailure = "true";
+      }, 3000);
+    </script>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
